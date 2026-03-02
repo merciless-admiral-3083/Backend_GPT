@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+torch>=2.0.0
+tiktoken
+sentence-transformers
+faiss-cpu
+numpy
+pydantic
+huggingface_hub
