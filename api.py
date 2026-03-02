@@ -12,7 +12,7 @@ from rag.rag_retriever import RAGRetriever
 import os
 import time
 import re
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, login
 
 hf_token = os.getenv("HF_TOKEN")
 
