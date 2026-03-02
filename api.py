@@ -14,6 +14,11 @@ import time
 import re
 from huggingface_hub import hf_hub_download
 
+hf_token = os.getenv("HF_TOKEN")
+
+if hf_token:
+    login(token=hf_token)
+    
 os.environ["HF_HUB_DISABLE_WARNING"] = "1"
 
 app = FastAPI(
@@ -33,7 +38,8 @@ app.add_middleware(
 MODEL_REPO = "merciless-admiral/200M_Param_GPT"
 model_path = hf_hub_download(
     repo_id=MODEL_REPO,
-    filename="model_domain_tuned_new.pt"
+    filename="model_domain_tuned_new.pt",
+    token=hf_token
 )
 # Configuration - EXACT from chat.py
 DISTANCE_THR = 1.5
