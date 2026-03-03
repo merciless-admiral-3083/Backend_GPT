@@ -1,8 +1,6 @@
 ---
 title: RAG_GPT_DEPLOY
-app_file: gradio_app.py
-sdk: gradio
-sdk_version: 6.8.0
+sdk: docker
 ---
 # GPT-RAG Assistant (Strictly context-grounded generation)
 

@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: rag-gpt-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: HF_MODEL_REPO_ID
+        sync: false
+      - key: HF_MODEL_FILENAME
+        sync: false
+      - key: HF_TOKEN
+        sync: false
