@@ -7,16 +7,13 @@ from pydantic import BaseModel
 import torch
 import torch.nn.functional as F
 import tiktoken
+from huggingface_hub import hf_hub_download
 from train import GPT, GPTConfig
 from rag.rag_retriever import RAGRetriever
 import os
 import time
 import re
-from huggingface_hub import hf_hub_download, login
 
-
-
-    
 os.environ["HF_HUB_DISABLE_WARNING"] = "1"
 
 app = FastAPI(
@@ -25,36 +22,67 @@ app = FastAPI(
     version="1.0.0"
 )
 
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    if origin.strip()
+]
+
 # CORS for React
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-MODEL_REPO = "merciless-admiral/200M_Param_GPT"
-model_path = hf_hub_download(
-    repo_id=MODEL_REPO,
-    filename="model_domain_tuned_new.pt",
-)
+
 # Configuration - EXACT from chat.py
 DISTANCE_THR = 1.5
 MAX_CHUNKS = 5
 MIN_CTX_LEN = 5
 TOP_K_RETRIEVAL = 10
 MAX_CONTEXT_TOKENS = 800
+MODEL_PATH = os.getenv("MODEL_PATH", "model_domain_tuned_new.pt")
+HF_MODEL_REPO_ID = os.getenv("HF_MODEL_REPO_ID", "")
+HF_MODEL_FILENAME = os.getenv("HF_MODEL_FILENAME", "model_domain_tuned_new.pt")
+HF_MODEL_REVISION = os.getenv("HF_MODEL_REVISION")
+
+
+def resolve_checkpoint_path():
+    if os.path.exists(MODEL_PATH):
+        print(f"✅ Using local model checkpoint: {MODEL_PATH}")
+        return MODEL_PATH
+
+    if not HF_MODEL_REPO_ID:
+        raise FileNotFoundError(
+            f"Model not found at '{MODEL_PATH}'. Set HF_MODEL_REPO_ID to download from Hugging Face."
+        )
+
+    print(f"🔄 Downloading model from Hugging Face: {HF_MODEL_REPO_ID}/{HF_MODEL_FILENAME}")
+    return hf_hub_download(
+        repo_id=HF_MODEL_REPO_ID,
+        filename=HF_MODEL_FILENAME,
+        revision=HF_MODEL_REVISION,
+        token=os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN"),
+    )
 
 # Load model at startup
 print("🔄 Loading model...")
-ckpt = torch.load(model_path, map_location="cpu")
-model = GPT(GPTConfig(**ckpt["config"]))
-model.load_state_dict(ckpt["model"])
-model.eval()
+model = None
+try:
+    checkpoint_path = resolve_checkpoint_path()
+    ckpt = torch.load(checkpoint_path, map_location='cpu')
+    model = GPT(GPTConfig(**ckpt["config"]))
+    model.load_state_dict(ckpt["model"])
+    model.eval()
+    print("✅ Model loaded!")
+except Exception as e:
+    print(f"⚠️ Model unavailable. Running in RAG-only mode. Reason: {e}")
 
 rag = RAGRetriever("rag_index/index.faiss", "rag_index/data.json")
 enc = tiktoken.get_encoding("gpt2")
-print("✅ Model loaded!")
+print("✅ RAG loaded!")
 
 # Request/Response models
 class ChatRequest(BaseModel):
@@ -491,9 +519,9 @@ async def chat(request: ChatRequest):
 async def health():
     return HealthResponse(
         status="healthy",
-        model_loaded=True,
+        model_loaded=model is not None,
         model_params="166M",
-        rag_facts=8188
+        rag_facts=len(getattr(rag, "data", []))
     )
 
 @app.get("/")

@@ -2,4 +2,3 @@ __pycache__/
 rag_data_clean/
 *.pyc
 model_domain_tuned_new.pt
-rag_index/index.faiss

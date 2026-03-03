@@ -1,0 +1,17 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.gradio/
+.venv/
+venv/
+env/
+
+# Keep image smaller; model is pulled from Hugging Face at runtime
+model_domain_tuned_new.pt
+
+# Optional local assets not required at runtime
+rag_data_clean/

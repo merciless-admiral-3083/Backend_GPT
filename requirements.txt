@@ -1,10 +1,10 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 fastapi
 uvicorn[standard]
-torch==2.10.0+cpu
-tiktoken
-sentence-transformers
-faiss-cpu
 numpy
 pydantic
 huggingface_hub
+torch
+tiktoken
+sentence-transformers
+faiss-cpu
