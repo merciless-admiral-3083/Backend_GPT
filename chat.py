@@ -1,8 +1,4 @@
-"""
-chat.py — RAG + GPT Hybrid
-Based on the original architecture (rag_weight confidence model),
-with fixes for: fish/whale bug, strawberry Q&A prefix, GPT repetition.
-"""
+
 
 import os, sys, logging, re, argparse
 os.environ["HF_HUB_DISABLE_WARNING"] = "1"
@@ -36,7 +32,6 @@ DISTANCE_THR = 1.5
 MAX_CHUNKS   = 5
 MIN_CTX_LEN  = 5
 
-# ── model ─────────────────────────────────────────────────
 def load_model(path):
     try:
         ck = torch.load(path, map_location=args.device)
@@ -48,7 +43,6 @@ def load_model(path):
         if DEBUG: print(f"[DEBUG] Model load failed: {e}")
         return None
 
-# ── text helpers ──────────────────────────────────────────
 def clean_text(text):
     if not text: return ""
     lines = []
@@ -71,15 +65,11 @@ def is_valid_sentence(s):
     s = s.strip()
     if len(s) < 8: return False
     if sum(c.isalpha() for c in s) < 6: return False
-    # reject pure questions
     if s.endswith('?'): return False
     if re.match(r'^(which|what|who|where|when|how|why)\b', s.lower()): return False
-    # reject code
     if re.search(r'\bdef\s+\w+\(|return\s+\w+\s*[;\n]|==|!=|->|=>', s): return False
-    # reject data lists
     if s.count(':') >= 2: return False
     if re.match(r'^[-*•]\s', s): return False
-    # digit ratio
     if sum(c.isdigit() for c in s) / max(len(s), 1) > 0.6: return False
     return True
 
@@ -112,7 +102,6 @@ def extract_sentences(text):
         if not is_valid_sentence(sent): continue
         norm = ' '.join(sent.lower().split())
         if norm in seen: continue
-        # near-duplicate check
         dup = False
         for ex in seen:
             w1, w2 = set(norm.split()), set(ex.split())
@@ -124,7 +113,6 @@ def extract_sentences(text):
 
     return valid
 
-# ── answer extraction ─────────────────────────────────────
 STOP = {
     'the','a','an','is','are','was','were','in','of','to','and','or',
     'for','it','this','that','be','by','as','at','on','its','with',
@@ -152,7 +140,6 @@ def extract_answer(question, context, max_sentences=2):
                                               'is','are','was','were','do','does','did',
                                               'define','explain','describe','capital','tell'})
 
-    # detect question type
     if re.match(r'^(is|are|was|were|does|do|did|has|have|can|could|will|would)\b', ql):
         qt = 'yesno'
     elif re.match(r'^(who\s+invented|who\s+created|who\s+founded|who\s+built|who\s+made)\b', ql):
@@ -171,7 +158,6 @@ def extract_answer(question, context, max_sentences=2):
     if DEBUG:
         print(f"[DEBUG] Q-type: {qt} | subject_kw: {s_kw}")
 
-    # ── subject stems for fuzzy matching (fish/fishes, play/played) ──
     s_stems = {w[:4] for w in s_kw}
 
     scored = []
@@ -180,13 +166,12 @@ def extract_answer(question, context, max_sentences=2):
         sk   = keywords(sent)
         ovlp = len(q_kw & sk)
         sovl = len(s_kw  & sk)
-        # stem overlap — handles fish/fishes, breath/breathe
         stem_ovlp = len(s_stems & {w[:4] for w in sk})
         sc   = ovlp * 8
 
         if qt == 'yesno':
             if re.match(r'^(yes\b|no\b)', sl):
-                sc += 50        # "Yes, strawberries are fruits." wins immediately
+                sc += 50        
             if stem_ovlp > 0:
                 sc += 15
 
@@ -196,11 +181,11 @@ def extract_answer(question, context, max_sentences=2):
             if s_kw:
                 first_word = sl.split()[0][:4] if sl else ''
                 if any(first_word == w[:4] for w in s_kw):
-                    sc += 15    # sentence starts with subject word
+                    sc += 15    
 
         elif qt == 'invention':
             if stem_ovlp == 0:
-                sc -= 40        # wrong subject
+                sc -= 40       
             if re.search(r'\b(invented|created|founded|designed|introduced|developed)\b', sl):
                 sc += 30 if stem_ovlp > 0 else -15
 
@@ -215,26 +200,23 @@ def extract_answer(question, context, max_sentences=2):
                 sc += 25
 
         elif qt == 'how':
-            # Subject must appear in sentence (fish/fishes via 4-char stems)
             if s_stems:
                 if stem_ovlp == 0:
-                    sc -= 60    # wrong subject entirely
+                    sc -= 60   
                 elif stem_ovlp >= len(s_stems):
-                    sc += 35    # all subject stems present — perfect match
+                    sc += 35   
                 else:
-                    sc += stem_ovlp * 12   # partial match
+                    sc += stem_ovlp * 12   
             if re.search(r'\b(through|using|process|by|via|allows|enables)\b', sl):
                 sc += 10
 
         elif qt == 'general':
             if stem_ovlp > 0: sc += 10
 
-        # prefer medium length sentences
         wc = len(sent.split())
         if 8 <= wc <= 40: sc += 6
         elif wc < 5:       sc -= 10
 
-        # penalise list-starters
         if re.match(r'^(for example|such as|e\.g\.|note that|including)\b', sl):
             sc -= 20
 
@@ -250,12 +232,10 @@ def extract_answer(question, context, max_sentences=2):
     if not scored or scored[0][1] < 5:
         return None
 
-    # top sentence must share at least 1 keyword with question
     if len(q_kw & keywords(scored[0][0])) < 1 and qt not in ('yesno',):
         if DEBUG: print("[DEBUG] Top sentence has zero question keyword overlap — refuse")
         return None
 
-    # pick up to max_sentences
     best    = scored[0][0]
     result  = [best]
     best_kw = keywords(best)
@@ -265,14 +245,13 @@ def extract_answer(question, context, max_sentences=2):
         sk2 = keywords(s)
         if len(q_kw & sk2) < 1:                                  continue
         if len(best_kw & sk2) < 1:                               continue
-        if len(best_kw & sk2) / max(len(sk2), 1) > 0.75:        continue  # too similar
+        if len(best_kw & sk2) / max(len(sk2), 1) > 0.75:        continue  
         result.append(s)
         if len(result) >= max_sentences: break
 
     answer = ' '.join(s.strip() if s.strip().endswith(('.','!','?')) else s.strip()+'.' for s in result)
     return re.sub(r'\.\.+', '.', re.sub(r'\s+', ' ', answer)).strip()
 
-# ── RAG confidence ────────────────────────────────────────
 def rag_confidence(answer, question):
     if not answer: return 0.0
     ql  = question.lower()
@@ -282,7 +261,6 @@ def rag_confidence(answer, question):
     a_kw = keywords(answer)
     ovlp = len(q_kw & a_kw) / max(len(q_kw), 1)
 
-    # type-specific confidence penalty
     type_ok = 1.0
     if 'invented' in ql or 'created' in ql:
         if not any(w in al for w in ['invented','created','founded','designed','introduced']):
@@ -292,12 +270,11 @@ def rag_confidence(answer, question):
             type_ok = 0.3
     if re.match(r'^(is|are|does|do|did|was|were)\b', ql):
         if re.match(r'^(yes\b|no\b)', al.lower()):
-            type_ok = 1.5   # direct yes/no is high confidence
+            type_ok = 1.5   
 
     conf = min(1.0, (wc / 25) * 0.3 + ovlp * 0.4 + type_ok * 0.3)
     return conf
 
-# ── GPT generation ────────────────────────────────────────
 @torch.no_grad()
 def gpt_generate(model, enc, context, question):
     if model is None: return None
@@ -339,7 +316,6 @@ def gpt_generate(model, enc, context, question):
             if answer.lower().startswith(pfx):
                 answer = answer[len(pfx):].strip()
 
-        # repetition check on final output
         words = answer.lower().split()
         if len(words) >= 8:
             for i in range(len(words) - 6):
@@ -357,7 +333,6 @@ def gpt_generate(model, enc, context, question):
         if DEBUG: print(f"[DEBUG] GPT error: {e}")
         return None
 
-# ── main ──────────────────────────────────────────────────
 def main():
     enc   = tiktoken.get_encoding("gpt2")
     model = load_model(args.model)
@@ -391,7 +366,6 @@ def main():
         if not q: continue
         stats['total'] += 1
 
-        # retrieve
         try:
             results = rag.retrieve(q, top_k=TOP_K_RETRIEVAL)
         except Exception as e:
@@ -415,7 +389,6 @@ def main():
             print("\nAssistant: I don't have reliable information about that.")
             stats['refused'] += 1; continue
 
-        # deduplicate chunks
         seen_c, unique = set(), []
         for r in sorted(filtered, key=lambda x: x['distance']):
             norm = ' '.join(r['text'].lower().split())[:120]
@@ -431,7 +404,6 @@ def main():
         if DEBUG:
             print(f"[DEBUG] Context: {len(context)} chars, {len(chunks)} chunks")
 
-        # RAG extraction
         rag_answer = extract_answer(q, context)
         rag_conf   = rag_confidence(rag_answer, q)
 
@@ -439,18 +411,15 @@ def main():
             print(f"[DEBUG] RAG answer: {rag_answer}")
             print(f"[DEBUG] RAG confidence: {rag_conf:.2f}")
 
-        # Decision
         final = None
         source = None
 
         if rag_answer and rag_conf >= args.rag_weight:
-            # High confidence RAG → use directly
             final  = rag_answer
             source = 'rag'
             if DEBUG: print("[DEBUG] Using RAG (high confidence)")
 
         elif model is not None and (not rag_answer or rag_conf < 0.60):
-            # Only try GPT if the best chunk is actually close (relevant context exists)
             best_dist = chunks[0]['distance'] if chunks else 999
             if best_dist <= 1.0:
                 gpt_ans = gpt_generate(model, enc, context, q)
@@ -464,13 +433,11 @@ def main():
                 if DEBUG: print("[DEBUG] GPT skipped/failed, using RAG")
 
         elif rag_answer:
-            # Medium confidence RAG
             final  = rag_answer
             source = 'rag'
             if DEBUG: print("[DEBUG] Using RAG (medium confidence)")
 
         if not final:
-            # Last resort: first valid sentence from best chunk
             for r in chunks:
                 sents = extract_sentences(r['text'])
                 if sents:

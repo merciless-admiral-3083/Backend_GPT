@@ -1,4 +1,3 @@
-# new_train.py - Updated GPT architecture
 import torch
 import torch.nn as nn
 import math
