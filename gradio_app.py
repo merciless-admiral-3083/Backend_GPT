@@ -36,7 +36,7 @@ def chat(message, history):
 demo = gr.ChatInterface(
     chat,
     title="🤖 RAG-GPT Chat",
-    description="Ask me anything! Powered by 200M parameter GPT + RAG.",
+    description="Ask me anything! Powered by 205M parameter GPT + RAG.",
     examples=[
         "How do fish breathe?",
         "What is recursion?",
