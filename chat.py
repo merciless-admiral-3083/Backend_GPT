@@ -16,6 +16,7 @@ import tiktoken
 from train import GPT, GPTConfig
 from rag.rag_retriever import RAGRetriever
 from rag.config import TOP_K_RETRIEVAL, MAX_CONTEXT_TOKENS
+from duckduckgo_search import DDGS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--model",       default="model_domain_tuned_new.pt")
@@ -61,6 +62,19 @@ def strip_qa_prefix(s):
     return re.sub(r'^(Q|A|Question|Answer)\s*:\s*', '', s,
                   flags=re.IGNORECASE).strip()
 
+def web_search_answer(question):
+    try:
+        with DDGS() as ddg:
+            results = ddg.text(question, max_results=3)
+        if not results:
+            return None
+        # Combine the top snippets as context
+        context = ' '.join(r['body'] for r in results if r.get('body'))
+        answer = extract_answer(question, context)
+        return answer
+    except Exception as e:
+        if DEBUG: print(f"[DEBUG] Web search error: {e}")
+        return None
 def is_valid_sentence(s):
     s = s.strip()
     if len(s) < 8: return False
@@ -366,7 +380,7 @@ def main():
     print("\nType your question (or 'exit' to quit)")
     if DEBUG: print("Debug ON\n")
 
-    stats = dict(total=0, answered=0, refused=0, rag=0, gpt=0)
+    stats = dict(total=0, answered=0, refused=0, rag=0, gpt=0, web=0)
 
     while True:
         print("\n" + "-" * 60)
@@ -449,13 +463,15 @@ def main():
             if DEBUG: print("[DEBUG] Using RAG (medium confidence)")
 
         if not final:
-            if DEBUG: print("[DEBUG] No answer found, refusing")
+            if DEBUG: print("[DEBUG] No local answer, trying web search...")
+            final = web_search_answer(q)
+            if final:
+                source = 'web'
+                if DEBUG: print(f"[DEBUG] Web search answer: {final}")
 
         if not final:
             print("\nAssistant: I don't have reliable information about that.")
             stats['refused'] += 1; continue
-
-        if not final[-1] in '.!?': final += '.'
         print(f"\n🤖 Assistant: {final}")
         stats['answered'] += 1
         stats[source]     += 1
