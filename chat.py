@@ -23,12 +23,12 @@ parser.add_argument("--device",      default="cpu")
 parser.add_argument("--temperature", type=float, default=0.4)
 parser.add_argument("--top_k",       type=int,   default=50)
 parser.add_argument("--max_tokens",  type=int,   default=100)
-parser.add_argument("--rag_weight",  type=float, default=0.50)
+parser.add_argument("--rag_weight",  type=float, default=0.65)
 parser.add_argument("--debug",       action="store_true")
 args = parser.parse_args()
 
 DEBUG        = args.debug
-DISTANCE_THR = 1.5
+DISTANCE_THR = 0.9
 MAX_CHUNKS   = 5
 MIN_CTX_LEN  = 5
 
@@ -150,6 +150,8 @@ def extract_answer(question, context, max_sentences=2):
         qt = 'when'
     elif re.match(r'^where\b', ql):
         qt = 'where'
+    elif re.match(r'^(how many|how much)\b', ql):
+        qt = 'quantity'
     elif re.match(r'^how\b', ql):
         qt = 'how'
     else:
@@ -209,7 +211,11 @@ def extract_answer(question, context, max_sentences=2):
                     sc += stem_ovlp * 12   
             if re.search(r'\b(through|using|process|by|via|allows|enables)\b', sl):
                 sc += 10
-
+        elif qt == 'quantity':
+            if re.search(r'\b\d+\b', sl):
+                sc += 40
+            else:
+                sc -= 60
         elif qt == 'general':
             if stem_ovlp > 0: sc += 10
 
@@ -248,8 +254,13 @@ def extract_answer(question, context, max_sentences=2):
         if len(best_kw & sk2) / max(len(sk2), 1) > 0.75:        continue  
         result.append(s)
         if len(result) >= max_sentences: break
-
+    
     answer = ' '.join(s.strip() if s.strip().endswith(('.','!','?')) else s.strip()+'.' for s in result)
+    
+    if qt == 'quantity' and not re.search(r'\b\d+\b', answer.lower()):
+        if DEBUG: print("[DEBUG] Quantity question but no number found — refusing")
+        return None
+
     return re.sub(r'\.\.+', '.', re.sub(r'\s+', ' ', answer)).strip()
 
 def rag_confidence(answer, question):
@@ -272,7 +283,7 @@ def rag_confidence(answer, question):
         if re.match(r'^(yes\b|no\b)', al.lower()):
             type_ok = 1.5   
 
-    conf = min(1.0, (wc / 25) * 0.3 + ovlp * 0.4 + type_ok * 0.3)
+    conf = min(1.0, ovlp * 0.6 + type_ok * 0.4)
     return conf
 
 @torch.no_grad()
@@ -355,7 +366,7 @@ def main():
     print("\nType your question (or 'exit' to quit)")
     if DEBUG: print("Debug ON\n")
 
-    stats = dict(total=0, answered=0, refused=0, rag=0, gpt=0, fallback=0)
+    stats = dict(total=0, answered=0, refused=0, rag=0, gpt=0)
 
     while True:
         print("\n" + "-" * 60)
@@ -438,13 +449,7 @@ def main():
             if DEBUG: print("[DEBUG] Using RAG (medium confidence)")
 
         if not final:
-            for r in chunks:
-                sents = extract_sentences(r['text'])
-                if sents:
-                    final  = sents[0]
-                    source = 'fallback'
-                    if DEBUG: print("[DEBUG] Using fallback first sentence")
-                    break
+            if DEBUG: print("[DEBUG] No answer found, refusing")
 
         if not final:
             print("\nAssistant: I don't have reliable information about that.")
