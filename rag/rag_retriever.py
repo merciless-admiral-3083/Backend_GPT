@@ -1,6 +1,4 @@
-# ----------------------------
-# SILENCE HUGGING FACE OUTPUT
-# ----------------------------
+
 import os
 import logging
 import os
