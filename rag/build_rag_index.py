@@ -17,13 +17,13 @@ import os
 import tiktoken
 enc = tiktoken.get_encoding("gpt2")
 
-MAX_TOKENS_PER_CHUNK = 80   # 👈 key knob (60–120 is ideal)
+MAX_TOKENS_PER_CHUNK = 80
 
 def chunk_text(text, max_tokens=80):
     tokens = enc.encode(text)
-    for i in range(0, len(tokens), max_tokens):
+    for i in range(0, len(tokens), max_tokens): # 0 to end with gap of 80, i.e. 1-79, 80-159, 160-239, etc.
         yield enc.decode(tokens[i:i+max_tokens])
-        
+
 for root, _, files in os.walk(DATA_DIR):
     for fname in files:
         if not fname.endswith(".txt"):

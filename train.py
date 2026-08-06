@@ -11,7 +11,7 @@ class CausalSelfAttention(nn.Module):
         self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=getattr(config, 'bias', False))
         self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=getattr(config, 'bias', False))
         self.c_proj.NANOGPT_SCALE_INIT = 1
-        self.attn_dropout = nn.Dropout(getattr(config, 'dropout', 0.0))
+        self.attn_dropout = nn.Dropout(getattr(config, 'dropout', 0.0)) 
         self.resid_dropout = nn.Dropout(getattr(config, 'dropout', 0.0))
         self.n_head = config.n_head
         self.n_embd = config.n_embd
